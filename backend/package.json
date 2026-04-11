@@ -1,0 +1,33 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+ "scripts": {
+    "start": "node src/bootstrap.js",
+    "dev": "nodemon src/bootstrap.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@googlemaps/google-maps-services-js": "^3.4.2",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.1",
+    "pg": "^8.20.0",
+    "razorpay": "^2.9.6",
+    "sequelize": "^6.37.8",
+    "twilio": "^5.13.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
