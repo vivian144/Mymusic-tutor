@@ -10,7 +10,7 @@ function sendLog(hypothesisId, location, message, data) {
   console.log('[agent-log]', JSON.stringify({ runId, hypothesisId, location, message, data }));
   // #endregion
   // #region agent log
-  fetch('http://127.0.0.1:7835/ingest/c854d1bd-8ad2-406b-a27e-c72ccee328b1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'03f7ca'},body:JSON.stringify({sessionId:'03f7ca',runId,hypothesisId,location,message,data,timestamp:Date.now()})}).catch(()=>{});
+  fetch('http://127.0.0.1:7835/ingest/c854d1bd-8ad2-406b-a27e-c72ccee328b1',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5dc49e'},body:JSON.stringify({sessionId:'5dc49e',runId,hypothesisId,location,message,data,timestamp:Date.now()})}).catch(()=>{});
   // #endregion
 }
 
