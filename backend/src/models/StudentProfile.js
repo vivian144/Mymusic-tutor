@@ -51,6 +51,14 @@ const StudentProfile = sequelize.define('StudentProfile', {
     type: DataTypes.TEXT,
     allowNull: true,
     comment: 'Special requirements or notes'
+  },
+  hasUsedFirstClass: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  firstClassBookedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   timestamps: true

@@ -18,7 +18,7 @@ const Package = sequelize.define('Package', {
     references: { model: 'Users', key: 'id' }
   },
   packageType: {
-    type: DataTypes.ENUM('1_month', '2_months', '3_months', '6_months'),
+    type: DataTypes.ENUM('1_month', '3_months', '6_months', '12_months'),
     allowNull: false
   },
   instrument: {

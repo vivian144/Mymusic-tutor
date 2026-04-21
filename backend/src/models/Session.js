@@ -9,8 +9,12 @@ const Session = sequelize.define('Session', {
   },
   packageId: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true,
     references: { model: 'Packages', key: 'id' }
+  },
+  isFirstClass: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
   studentId: {
     type: DataTypes.UUID,
