@@ -30,22 +30,34 @@ Tagline: "Master Music at Your Home"
 - Admin manually approves all teachers
 - Aadhaar KYC + background check required
 
-## Package & Pricing
-| Package | Reschedules |
-|---------|------------|
-| 1 Month | 1 |
-| 2 Months | 2 |
-| 3 Months | 3 |
-| 6 Months | 5 |
+## Pricing Structure
+Base prices per 3-month package (2 sessions/week):
+- Basics & Initial: ₹14,000
+- Grade 1-2: ₹17,000
+- Grade 3-4: ₹21,000
+- Grade 5-6: ₹25,000
+- Grade 7-8: ₹29,000
 
-## Grade Pricing (Per Session)
-| Grade | Price Range |
-|-------|------------|
-| Beginner | ₹300-500 |
-| Grade 1-2 | ₹400-600 |
-| Grade 3-4 | ₹600-900 |
-| Grade 5-6 | ₹900-1200 |
-| Grade 7-8 | ₹1200-1800 |
+Discounts: 6 months = 5% off, 12 months = 10% off
+Teacher adjustment: ±10% from base only
+Commission: Teacher 75%, Platform 25%
+Travel fee: Built into price, not shown separately
+Experience adjustments:
+- Verified badge: +5%
+- Senior badge: +10%
+- Elite badge: +15%
+
+## First Class Policy
+- Called "First Class" NOT "demo class"
+- Student pays same price as 1 regular session for their grade
+- Completely separate from packages
+- 1 per account lifetime - cannot be repeated
+- 1 hour duration
+- Grade and instrument specific
+- Teacher earns 75%, platform earns 25% (same as regular)
+- After first class → student buys package separately
+- Same teacher preferred for package unless student requests change
+- Acts as conversion funnel into package purchase
 
 ## Reminder System
 - 24hr before → WhatsApp + app notification
