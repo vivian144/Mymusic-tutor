@@ -11,6 +11,7 @@ require('./models');
 const authRoutes = require('./routes/auth');
 const teacherRoutes = require('./routes/teachers');
 const studentRoutes = require('./routes/students');
+const bookingRoutes = require('./routes/bookings');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -33,6 +34,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/students', studentRoutes);
+app.use('/api/bookings', bookingRoutes);
 
 // Health Check Route
 app.get('/', (req, res) => {
