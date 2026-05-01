@@ -13,6 +13,10 @@ const teacherRoutes = require('./routes/teachers');
 const studentRoutes = require('./routes/students');
 const bookingRoutes = require('./routes/bookings');
 const adminRoutes = require('./routes/admin');
+const notificationRoutes = require('./routes/notifications');
+
+// Start reminder queue processor
+require('./jobs/reminderProcessor');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -37,6 +41,7 @@ app.use('/api/teachers', teacherRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health Check Route
 app.get('/', (req, res) => {

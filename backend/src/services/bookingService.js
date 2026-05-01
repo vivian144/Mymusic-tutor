@@ -1,6 +1,15 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { User, TeacherProfile, StudentProfile, Package, Session } = require('../models');
+const {
+  sendBookingConfirmation,
+  sendPackageConfirmation,
+  sendStudentAbsentAlert,
+  sendTeacherAbsentAlert,
+  sendDisputeRaised,
+  sendRescheduleConfirmation
+} = require('./notificationService');
+const { scheduleReminders, cancelReminders } = require('../jobs/reminderQueue');
 
 // ─── Pricing Constants ────────────────────────────────────────────────────────
 
@@ -101,6 +110,24 @@ const createFirstClassBooking = async (studentId, teacherId, scheduledAt, instru
     status: 'scheduled'
   });
 
+  // Send booking confirmation WhatsApp (non-blocking)
+  const [student, teacher] = await Promise.all([
+    User.findByPk(studentId, { attributes: ['fullName', 'phone', 'whatsappNumber', 'address'] }),
+    User.findByPk(teacherId, { attributes: ['fullName', 'phone', 'whatsappNumber'] })
+  ]);
+  sendBookingConfirmation(
+    student.whatsappNumber || student.phone,
+    teacher.whatsappNumber || teacher.phone,
+    {
+      studentName:    student.fullName,
+      teacherName:    teacher.fullName,
+      instrument,
+      scheduledAt:    session.scheduledAt,
+      amount:         price,
+      studentAddress: student.address
+    }
+  ).catch(err => console.error('[Notification] sendBookingConfirmation failed:', err.message));
+
   return {
     session,
     pricing: {
@@ -185,6 +212,31 @@ const confirmBooking = async (bookingId, paymentId) => {
       const updatedPkg = await Package.findByPk(bookingId, {
         include: [{ model: Session, as: 'sessions', order: [['scheduledAt', 'ASC']] }]
       });
+
+      // Schedule reminders for all generated sessions (non-blocking)
+      Promise.all(sessions.map(s => scheduleReminders(s)))
+        .catch(err => console.error('[ReminderQueue] Failed to schedule reminders:', err.message));
+
+      // Send package confirmation WhatsApp (non-blocking)
+      const [student, teacher] = await Promise.all([
+        User.findByPk(pkg.studentId, { attributes: ['fullName', 'phone', 'whatsappNumber'] }),
+        User.findByPk(pkg.teacherId, { attributes: ['fullName', 'phone', 'whatsappNumber'] })
+      ]);
+      const durationMap = { '1_month': '1-Month', '3_months': '3-Month', '6_months': '6-Month', '12_months': '12-Month' };
+      sendPackageConfirmation(
+        student.whatsappNumber || student.phone,
+        teacher.whatsappNumber || teacher.phone,
+        {
+          studentName:   student.fullName,
+          teacherName:   teacher.fullName,
+          instrument:    pkg.instrument,
+          duration:      durationMap[pkg.packageType] || pkg.packageType,
+          totalSessions: sessions.length,
+          startDate:     sessions[0].scheduledAt,
+          amount:        pkg.totalAmount
+        }
+      ).catch(err => console.error('[Notification] sendPackageConfirmation failed:', err.message));
+
       return { booking: updatedPkg, sessionCount: sessions.length, type: 'package' };
     } catch (err) {
       await t.rollback();
@@ -203,6 +255,10 @@ const confirmBooking = async (bookingId, paymentId) => {
     studentProfile.hasUsedFirstClass = true;
     studentProfile.firstClassBookedAt = new Date();
     await studentProfile.save();
+
+    // Schedule reminders for the first-class session (non-blocking)
+    scheduleReminders(session)
+      .catch(err => console.error('[ReminderQueue] Failed to schedule first-class reminders:', err.message));
 
     return { booking: session, type: 'first_class' };
   }
@@ -319,6 +375,10 @@ const rescheduleSession = async (sessionId, userId, newScheduledAt) => {
     try {
       session.scheduledAt = new Date(newScheduledAt);
       session.status = 'scheduled';
+      // Reset reminder flags so new reminders fire at the correct time
+      session.reminder24Sent = false;
+      session.reminder2Sent  = false;
+      session.reminder15Sent = false;
       await session.save({ transaction: t });
 
       pkg.reschedulesUsed += 1;
@@ -331,9 +391,34 @@ const rescheduleSession = async (sessionId, userId, newScheduledAt) => {
     }
   } else {
     // First-class session — reschedule freely
-    session.scheduledAt = new Date(newScheduledAt);
+    session.scheduledAt    = new Date(newScheduledAt);
+    session.reminder24Sent = false;
+    session.reminder2Sent  = false;
+    session.reminder15Sent = false;
     await session.save();
   }
+
+  // Cancel old reminder jobs and schedule new ones (non-blocking)
+  cancelReminders(session.id)
+    .then(() => scheduleReminders(session))
+    .catch(err => console.error('[ReminderQueue] Failed to reschedule reminders:', err.message));
+
+  // Send reschedule confirmation (non-blocking)
+  const [student, teacher] = await Promise.all([
+    User.findByPk(session.studentId, { attributes: ['fullName', 'phone', 'whatsappNumber', 'address'] }),
+    User.findByPk(session.teacherId, { attributes: ['fullName', 'phone', 'whatsappNumber'] })
+  ]);
+  sendRescheduleConfirmation(
+    student.whatsappNumber || student.phone,
+    teacher.whatsappNumber || teacher.phone,
+    {
+      studentName:    student.fullName,
+      teacherName:    teacher.fullName,
+      instrument:     session.package?.instrument || 'Music',
+      newScheduledAt: session.scheduledAt,
+      studentAddress: student.address
+    }
+  ).catch(err => console.error('[Notification] sendRescheduleConfirmation failed:', err.message));
 
   return { session };
 };
@@ -422,8 +507,15 @@ const markStudentAbsent = async (sessionId, teacherId) => {
     await pkg.save();
   }
 
-  // WhatsApp notification — placeholder
-  console.log(`[WhatsApp] Student absent: session=${sessionId}, student=${session.studentId}`);
+  // Cancel pending reminders since session won't happen
+  cancelReminders(sessionId)
+    .catch(err => console.error('[ReminderQueue] Failed to cancel reminders:', err.message));
+
+  const student = await User.findByPk(session.studentId, { attributes: ['fullName', 'phone', 'whatsappNumber'] });
+  sendStudentAbsentAlert(
+    student.whatsappNumber || student.phone,
+    { studentName: student.fullName, instrument: 'Music', scheduledAt: session.scheduledAt }
+  ).catch(err => console.error('[Notification] sendStudentAbsentAlert failed:', err.message));
 
   return { session };
 };
@@ -448,19 +540,44 @@ const markTeacherAbsent = async (sessionId, studentId) => {
     await Package.increment('reschedulesAllowed', { where: { id: session.packageId } });
   }
 
-  // Check teacher absence count and flag if >= 3
+  // Cancel pending reminders since session won't happen
+  cancelReminders(sessionId)
+    .catch(err => console.error('[ReminderQueue] Failed to cancel reminders:', err.message));
+
+  const [student, teacher] = await Promise.all([
+    User.findByPk(session.studentId, { attributes: ['fullName', 'phone', 'whatsappNumber'] }),
+    User.findByPk(session.teacherId, { attributes: ['fullName', 'phone', 'whatsappNumber'] })
+  ]);
+
   const teacherAbsenceCount = await Session.count({
     where: { teacherId: session.teacherId, status: 'teacher_absent' }
   });
-  if (teacherAbsenceCount >= 3) {
-    // Flag for admin review — placeholder (production: update a flag / send admin notification)
-    console.log(
-      `[Admin Alert] Teacher ${session.teacherId} has ${teacherAbsenceCount} absences. Flagged for review.`
-    );
-  }
 
-  // WhatsApp notification to admin — placeholder
-  console.log(`[WhatsApp] Teacher absent: session=${sessionId}, teacher=${session.teacherId}. Admin alerted.`);
+  const issue = teacherAbsenceCount >= 3
+    ? `Teacher absent (${teacherAbsenceCount} total absences — requires review)`
+    : 'Teacher did not attend scheduled session';
+
+  sendTeacherAbsentAlert(
+    student.whatsappNumber || student.phone,
+    process.env.ADMIN_WHATSAPP_NUMBER,
+    {
+      studentName:  student.fullName,
+      teacherName:  teacher.fullName,
+      teacherPhone: teacher.whatsappNumber || teacher.phone,
+      sessionId,
+      scheduledAt:  session.scheduledAt
+    }
+  ).catch(err => console.error('[Notification] sendTeacherAbsentAlert failed:', err.message));
+
+  sendDisputeRaised(
+    process.env.ADMIN_WHATSAPP_NUMBER,
+    {
+      studentName: student.fullName,
+      teacherName: teacher.fullName,
+      sessionId,
+      issue
+    }
+  ).catch(err => console.error('[Notification] sendDisputeRaised failed:', err.message));
 
   return { session, freeRescheduleAdded: !!session.packageId };
 };

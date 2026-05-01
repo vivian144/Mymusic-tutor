@@ -4,6 +4,12 @@ const {
   User, TeacherProfile, StudentProfile,
   Package, Session, ExamCenter, ActiveCity
 } = require('../models');
+const {
+  sendTeacherApproved,
+  sendTeacherRejected,
+  sendCustomMessage,
+  sendBulkMessage
+} = require('./notificationService');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -12,8 +18,8 @@ const logAdminAction = (adminId, action, targetId, reason = null) => {
 };
 
 const sendWhatsApp = (phone, message) => {
-  // WhatsApp integration placeholder — replace with Twilio/WATI in production
-  console.log(`[WhatsApp] to=${phone} msg="${message}"`);
+  sendCustomMessage(phone, message)
+    .catch(err => console.error(`[Notification] sendWhatsApp to ${phone} failed:`, err.message));
 };
 
 const getGradeTier = (grade) => {
@@ -260,8 +266,18 @@ const approveTeacher = async (teacherId, status, note, adminId) => {
   }
 
   logAdminAction(adminId, `teacher_${status}`, teacherId, note);
-  sendWhatsApp(teacher.whatsappNumber || teacher.phone,
-    `Your MyMusic Tutor teacher application has been ${status}. ${note ? 'Note: ' + note : ''}`);
+
+  const phone = teacher.whatsappNumber || teacher.phone;
+  if (status === 'approved') {
+    sendTeacherApproved(phone, teacher.fullName)
+      .catch(err => console.error('[Notification] sendTeacherApproved failed:', err.message));
+  } else if (status === 'rejected') {
+    sendTeacherRejected(phone, teacher.fullName, note || 'No reason provided')
+      .catch(err => console.error('[Notification] sendTeacherRejected failed:', err.message));
+  } else {
+    // suspended
+    sendWhatsApp(phone, `Your MyMusic Tutor teacher account has been suspended. ${note ? 'Reason: ' + note : ''} Contact support for assistance.`);
+  }
 
   return { teacher, status };
 };

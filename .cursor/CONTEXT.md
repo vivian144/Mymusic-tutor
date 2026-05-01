@@ -103,3 +103,15 @@ Experience adjustments:
 - Sibling discount → Phase 2
 - Rockschool syllabus → Phase 2
 - Exam center finder → Phase 2
+
+## Post Launch Features (Do NOT build before launch)
+- WhatsApp AI chatbot (Claude API powered, English only)
+- In-app chat support widget
+- Support team dashboard
+- Demo class feature
+- Instrument rental (teacher brings for ₹1000 extra)
+- Sibling discount system
+- Rockschool syllabus
+- Exam center finder expanded statewide
+- React Native mobile app
+- Telugu language support

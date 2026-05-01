@@ -3,12 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
- "scripts": {
+  "scripts": {
     "start": "node src/bootstrap.js",
     "dev": "nodemon src/bootstrap.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -16,10 +15,12 @@
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.2",
     "bcryptjs": "^3.0.3",
+    "bull": "^4.16.5",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
+    "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "pg": "^8.20.0",
