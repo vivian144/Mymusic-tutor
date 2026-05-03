@@ -115,3 +115,19 @@ Experience adjustments:
 - Exam center finder expanded statewide
 - React Native mobile app
 - Telugu language support
+
+## Security Implementation
+- Rate limiting: 8 limiters (auth/booking/payment/admin/general)
+- Account lockout: 5 fails=15min, 10 fails=24hr, 20 fails=admin flag
+- Progressive delays on failed logins
+- Helmet security headers fully configured
+- CORS: production allows mymusictutor.in only
+- Input sanitization: XSS, HPP, NoSQL injection protected
+- Request size limit: 10kb max
+- Password strength: min 8 chars, upper+lower+number+special
+- Password never exposed in any API response
+- Booking amount verified server side always
+- Admin audit log: all actions logged to AdminLog table
+- JWT secret: minimum 32 chars enforced, 64+ recommended
+- Redis: password protected
+- Razorpay webhook verification: TODO (build with payments)
