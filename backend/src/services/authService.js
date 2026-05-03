@@ -1,10 +1,24 @@
 const jwt = require('jsonwebtoken');
 const { User, TeacherProfile, StudentProfile } = require('../models');
+const {
+  checkAccountLockout,
+  recordFailedLogin,
+  resetFailedLogins
+} = require('../middleware/rateLimiter');
+
+// ─── FIX 11: JWT secret strength check on startup ─────────────────────────────
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error('[SECURITY] JWT_SECRET must be at least 32 characters. Refusing to start.');
+}
+if (JWT_SECRET.length < 64) {
+  console.warn('[SECURITY] JWT_SECRET is less than 64 characters. Consider using a longer secret in production.');
+}
 
 const generateToken = (user) => {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET,
+    JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
 };
@@ -25,19 +39,23 @@ const sanitizeUser = (user) => ({
 const register = async (userData) => {
   const {
     fullName, email, password, phone, role, city, state, address,
-    // teacher fields
     bio, experience, instruments, highestGrade, hourlyRate, serviceRadiusKm,
-    // student fields
     age, parentName, parentPhone, instrument, currentGrade, targetGrade,
     hasInstrumentAtHome, notes
   } = userData;
 
-  const existing = await User.findOne({ where: { email: email.toLowerCase().trim() } });
+  const existing = await User.findOne({
+    where: { email: email.toLowerCase().trim() },
+    attributes: ['id']
+  });
   if (existing) {
     const err = new Error('Email already registered'); err.status = 409; throw err;
   }
 
-  const existingPhone = await User.findOne({ where: { phone: phone.trim() } });
+  const existingPhone = await User.findOne({
+    where: { phone: phone.trim() },
+    attributes: ['id']
+  });
   if (existingPhone) {
     const err = new Error('Phone number already registered'); err.status = 409; throw err;
   }
@@ -83,8 +101,16 @@ const register = async (userData) => {
 };
 
 const login = async (email, password) => {
+  // FIX 1: Check account lockout before attempting credential lookup
+  const lockStatus = await checkAccountLockout(email);
+  if (lockStatus.locked) {
+    const err = new Error(lockStatus.message); err.status = 429; throw err;
+  }
+
+  // FIX 5: password excluded — we use comparePassword separately
   const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
   if (!user) {
+    await recordFailedLogin(email);
     const err = new Error('Invalid email or password'); err.status = 401; throw err;
   }
 
@@ -94,19 +120,26 @@ const login = async (email, password) => {
 
   const isMatch = await user.comparePassword(password);
   if (!isMatch) {
+    await recordFailedLogin(email);
     const err = new Error('Invalid email or password'); err.status = 401; throw err;
   }
 
-  await user.update({ lastLogin: new Date() });
+  // Reset lockout counter on successful login
+  await Promise.all([
+    user.update({ lastLogin: new Date() }),
+    resetFailedLogins(email)
+  ]);
 
   const token = generateToken(user);
   return { token, user: sanitizeUser(user) };
 };
 
 const refreshToken = async (token) => {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  const decoded = jwt.verify(token, JWT_SECRET);
 
-  const user = await User.findByPk(decoded.id);
+  const user = await User.findByPk(decoded.id, {
+    attributes: { exclude: ['password'] }
+  });
   if (!user) {
     const err = new Error('User not found'); err.status = 401; throw err;
   }

@@ -2,7 +2,7 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const {
   User, TeacherProfile, StudentProfile,
-  Package, Session, ExamCenter, ActiveCity
+  Package, Session, ExamCenter, ActiveCity, AdminLog
 } = require('../models');
 const {
   sendTeacherApproved,
@@ -13,8 +13,28 @@ const {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const logAdminAction = (adminId, action, targetId, reason = null) => {
-  console.log(`[AdminLog] admin=${adminId} action=${action} target=${targetId} reason=${reason || 'N/A'} at=${new Date().toISOString()}`);
+// FIX 12: Derive a coarse target type from action name for the audit log
+const getTargetType = (action) => {
+  if (action.startsWith('teacher_') || action === 'teacher_payout_processed') return 'teacher';
+  if (action.startsWith('user_')) return 'user';
+  if (action.startsWith('session_') || action.startsWith('dispute_') || action === 'reminder_triggered') return 'session';
+  if (action.startsWith('exam_center_')) return 'exam_center';
+  if (action.startsWith('city_')) return 'city';
+  if (action.includes('notification')) return 'notification';
+  return 'system';
+};
+
+// FIX 12: Persist every admin action to AdminLog table (fire-and-forget, errors do not abort the request)
+const logAdminAction = (adminId, action, targetId, details = null, ipAddress = null) => {
+  console.log(`[AdminLog] admin=${adminId} action=${action} target=${targetId} ip=${ipAddress} at=${new Date().toISOString()}`);
+  AdminLog.create({
+    adminId,
+    action,
+    targetType: getTargetType(action),
+    targetId:   String(targetId),
+    details:    details ? String(details).substring(0, 2000) : null,
+    ipAddress:  ipAddress || null
+  }).catch(err => console.error('[AdminLog] Failed to persist audit entry:', err.message));
 };
 
 const sendWhatsApp = (phone, message) => {
@@ -238,14 +258,16 @@ const getPendingTeachers = async () => {
   return { teachers, count: teachers.length };
 };
 
-const approveTeacher = async (teacherId, status, note, adminId) => {
+const approveTeacher = async (teacherId, status, note, adminId, ipAddress = null) => {
   const validStatuses = ['approved', 'rejected', 'suspended'];
   if (!validStatuses.includes(status)) {
     const err = new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     err.status = 400; throw err;
   }
 
+  // FIX 5: exclude password from User lookup flowing into response
   const teacher = await User.findByPk(teacherId, {
+    attributes: { exclude: ['password'] },
     include: [{ model: TeacherProfile, as: 'teacherProfile' }]
   });
   if (!teacher || teacher.role !== 'teacher') {
@@ -265,7 +287,7 @@ const approveTeacher = async (teacherId, status, note, adminId) => {
     await teacher.save();
   }
 
-  logAdminAction(adminId, `teacher_${status}`, teacherId, note);
+  logAdminAction(adminId, `teacher_${status}`, teacherId, note, ipAddress);
 
   const phone = teacher.whatsappNumber || teacher.phone;
   if (status === 'approved') {
@@ -282,7 +304,7 @@ const approveTeacher = async (teacherId, status, note, adminId) => {
   return { teacher, status };
 };
 
-const flagTeacher = async (teacherId, reason, adminId) => {
+const flagTeacher = async (teacherId, reason, adminId, ipAddress = null) => {
   if (!reason || !reason.trim()) {
     const err = new Error('Reason is required to flag a teacher'); err.status = 400; throw err;
   }
@@ -296,17 +318,19 @@ const flagTeacher = async (teacherId, reason, adminId) => {
   profile.approvalNote = `[FLAGGED] ${reason.trim()}`;
   await profile.save();
 
-  logAdminAction(adminId, 'teacher_flagged', teacherId, reason);
+  logAdminAction(adminId, 'teacher_flagged', teacherId, reason, ipAddress);
 
   return { teacherId, flagged: true, reason: reason.trim() };
 };
 
-const removeTeacher = async (teacherId, reason, adminId) => {
+const removeTeacher = async (teacherId, reason, adminId, ipAddress = null) => {
   if (!reason || !reason.trim()) {
     const err = new Error('Reason is required to remove a teacher'); err.status = 400; throw err;
   }
 
+  // FIX 5: exclude password from User lookup flowing into response
   const teacher = await User.findByPk(teacherId, {
+    attributes: { exclude: ['password'] },
     include: [{ model: TeacherProfile, as: 'teacherProfile' }]
   });
   if (!teacher || teacher.role !== 'teacher') {
@@ -341,7 +365,7 @@ const removeTeacher = async (teacherId, reason, adminId) => {
     );
   }
 
-  logAdminAction(adminId, 'teacher_removed', teacherId, reason);
+  logAdminAction(adminId, 'teacher_removed', teacherId, reason, ipAddress);
 
   return { teacherId, removed: true, affectedPackages: activePackages.length };
 };
@@ -374,7 +398,7 @@ const getTeacherPayouts = async (status = 'all') => {
   };
 };
 
-const processTeacherPayout = async (teacherId, adminId) => {
+const processTeacherPayout = async (teacherId, adminId, ipAddress = null) => {
   const teacher = await User.findByPk(teacherId, {
     attributes: { exclude: ['password'] },
     include: [{ model: TeacherProfile, as: 'teacherProfile' }]
@@ -386,7 +410,7 @@ const processTeacherPayout = async (teacherId, adminId) => {
   const amount = teacher.teacherProfile?.totalEarnings || 0;
 
   // Placeholder: actual bank transfer handled via Razorpay or manual process
-  logAdminAction(adminId, 'teacher_payout_processed', teacherId, `Amount: ₹${amount}`);
+  logAdminAction(adminId, 'teacher_payout_processed', teacherId, `Amount: ₹${amount}`, ipAddress);
   sendWhatsApp(
     teacher.whatsappNumber || teacher.phone,
     `Your earnings of ₹${amount} have been processed for payout. It will reflect in your bank account within 2-3 business days.`
@@ -442,7 +466,7 @@ const getAllStudents = async (filters = {}) => {
   return { students: results, count: results.length };
 };
 
-const suspendUser = async (userId, reason, adminId) => {
+const suspendUser = async (userId, reason, adminId, ipAddress = null) => {
   if (!reason || !reason.trim()) {
     const err = new Error('Reason is required to suspend a user'); err.status = 400; throw err;
   }
@@ -450,7 +474,8 @@ const suspendUser = async (userId, reason, adminId) => {
     const err = new Error('Admin cannot suspend their own account'); err.status = 403; throw err;
   }
 
-  const user = await User.findByPk(userId);
+  // FIX 5: exclude password
+  const user = await User.findByPk(userId, { attributes: { exclude: ['password'] } });
   if (!user) {
     const err = new Error('User not found'); err.status = 404; throw err;
   }
@@ -472,13 +497,14 @@ const suspendUser = async (userId, reason, adminId) => {
     user.whatsappNumber || user.phone,
     `Your MyMusic Tutor account has been suspended. Reason: ${reason.trim()}. Contact support for assistance.`
   );
-  logAdminAction(adminId, 'user_suspended', userId, reason);
+  logAdminAction(adminId, 'user_suspended', userId, reason, ipAddress);
 
   return { userId, suspended: true, reason: reason.trim() };
 };
 
-const reactivateUser = async (userId, adminId) => {
-  const user = await User.findByPk(userId);
+const reactivateUser = async (userId, adminId, ipAddress = null) => {
+  // FIX 5: exclude password
+  const user = await User.findByPk(userId, { attributes: { exclude: ['password'] } });
   if (!user) {
     const err = new Error('User not found'); err.status = 404; throw err;
   }
@@ -500,7 +526,7 @@ const reactivateUser = async (userId, adminId) => {
     user.whatsappNumber || user.phone,
     `Welcome back to MyMusic Tutor! Your account has been reactivated.`
   );
-  logAdminAction(adminId, 'user_reactivated', userId);
+  logAdminAction(adminId, 'user_reactivated', userId, null, ipAddress);
 
   return { userId, reactivated: true };
 };
@@ -548,7 +574,7 @@ const getAllBookings = async (filters = {}) => {
   return { bookings: packages, count: packages.length };
 };
 
-const overrideReschedule = async (sessionId, newDate, adminId) => {
+const overrideReschedule = async (sessionId, newDate, adminId, ipAddress = null) => {
   const session = await Session.findByPk(sessionId, {
     include: [
       { model: User, as: 'student', attributes: ['fullName', 'phone', 'whatsappNumber'] },
@@ -577,12 +603,12 @@ const overrideReschedule = async (sessionId, newDate, adminId) => {
     `Admin has rescheduled a session with ${session.student?.fullName} to ${newDateStr}.`
   );
 
-  logAdminAction(adminId, 'session_rescheduled', sessionId, `from ${previousDate} to ${newDate}`);
+  logAdminAction(adminId, 'session_rescheduled', sessionId, `from ${previousDate} to ${newDate}`, ipAddress);
 
   return { session };
 };
 
-const forceCompleteSession = async (sessionId, adminId) => {
+const forceCompleteSession = async (sessionId, adminId, ipAddress = null) => {
   const session = await Session.findByPk(sessionId);
   if (!session) {
     const err = new Error('Session not found'); err.status = 404; throw err;
@@ -619,7 +645,7 @@ const forceCompleteSession = async (sessionId, adminId) => {
     }
 
     await t.commit();
-    logAdminAction(adminId, 'session_force_completed', sessionId);
+    logAdminAction(adminId, 'session_force_completed', sessionId, null, ipAddress);
     return { session };
   } catch (err) {
     await t.rollback();
@@ -643,7 +669,7 @@ const getAllDisputes = async () => {
   return { disputes, count: disputes.length };
 };
 
-const resolveDispute = async (disputeId, resolution, adminId) => {
+const resolveDispute = async (disputeId, resolution, adminId, ipAddress = null) => {
   if (!resolution || !resolution.trim()) {
     const err = new Error('Resolution note is required'); err.status = 400; throw err;
   }
@@ -671,14 +697,14 @@ const resolveDispute = async (disputeId, resolution, adminId) => {
   sendWhatsApp(session.student?.whatsappNumber || session.student?.phone, resolutionMsg);
   sendWhatsApp(session.teacher?.whatsappNumber || session.teacher?.phone, resolutionMsg);
 
-  logAdminAction(adminId, 'dispute_resolved', disputeId, resolution);
+  logAdminAction(adminId, 'dispute_resolved', disputeId, resolution, ipAddress);
 
   return { session, resolved: true, resolution: resolution.trim() };
 };
 
 // ─── WhatsApp Management ───────────────────────────────────────────────────────
 
-const sendPlatformNotification = async (userIds, message, adminId) => {
+const sendPlatformNotification = async (userIds, message, adminId, ipAddress = null) => {
   if (!message || !message.trim()) {
     const err = new Error('Message is required'); err.status = 400; throw err;
   }
@@ -697,11 +723,11 @@ const sendPlatformNotification = async (userIds, message, adminId) => {
     sent++;
   }
 
-  logAdminAction(adminId, 'platform_notification_sent', userIds.join(','), `msg: ${message.substring(0, 50)}`);
+  logAdminAction(adminId, 'platform_notification_sent', userIds.join(','), `msg: ${message.substring(0, 50)}`, ipAddress);
   return { sent, total: userIds.length };
 };
 
-const sendBulkNotification = async (role, message, adminId) => {
+const sendBulkNotification = async (role, message, adminId, ipAddress = null) => {
   if (!message || !message.trim()) {
     const err = new Error('Message is required'); err.status = 400; throw err;
   }
@@ -726,7 +752,7 @@ const sendBulkNotification = async (role, message, adminId) => {
     sent++;
   }
 
-  logAdminAction(adminId, 'bulk_notification_sent', role, `msg: ${message.substring(0, 50)}`);
+  logAdminAction(adminId, 'bulk_notification_sent', role, `msg: ${message.substring(0, 50)}`, ipAddress);
   return { sent, role };
 };
 
@@ -825,7 +851,7 @@ const viewPendingReminders = async () => {
   return { sessions, count: sessions.length };
 };
 
-const triggerReminder = async (sessionId, adminId) => {
+const triggerReminder = async (sessionId, adminId, ipAddress = null) => {
   const session = await Session.findByPk(sessionId, {
     include: [
       { model: User, as: 'student', attributes: ['fullName', 'phone', 'whatsappNumber'] },
@@ -849,14 +875,14 @@ const triggerReminder = async (sessionId, adminId) => {
   session.reminder24Sent = true;
   await session.save();
 
-  logAdminAction(adminId, 'reminder_triggered', sessionId);
+  logAdminAction(adminId, 'reminder_triggered', sessionId, null, ipAddress);
 
   return { sessionId, reminderSent: true };
 };
 
 // ─── Exam Center Management ────────────────────────────────────────────────────
 
-const addExamCenter = async (data, adminId) => {
+const addExamCenter = async (data, adminId, ipAddress = null) => {
   const { name, address, city, state, phone, availableDates, examTypes } = data;
   if (!name || !address || !city || !state) {
     const err = new Error('name, address, city, and state are required'); err.status = 400; throw err;
@@ -878,11 +904,11 @@ const addExamCenter = async (data, adminId) => {
     examTypes: examTypes || []
   });
 
-  logAdminAction(adminId, 'exam_center_added', center.id);
+  logAdminAction(adminId, 'exam_center_added', center.id, null, ipAddress);
   return { center };
 };
 
-const updateExamCenter = async (centerId, data, adminId) => {
+const updateExamCenter = async (centerId, data, adminId, ipAddress = null) => {
   const center = await ExamCenter.findByPk(centerId);
   if (!center) {
     const err = new Error('Exam center not found'); err.status = 404; throw err;
@@ -894,11 +920,11 @@ const updateExamCenter = async (centerId, data, adminId) => {
   }
   await center.save();
 
-  logAdminAction(adminId, 'exam_center_updated', centerId);
+  logAdminAction(adminId, 'exam_center_updated', centerId, null, ipAddress);
   return { center };
 };
 
-const removeExamCenter = async (centerId, adminId) => {
+const removeExamCenter = async (centerId, adminId, ipAddress = null) => {
   const center = await ExamCenter.findByPk(centerId);
   if (!center) {
     const err = new Error('Exam center not found'); err.status = 404; throw err;
@@ -907,7 +933,7 @@ const removeExamCenter = async (centerId, adminId) => {
   center.isActive = false;
   await center.save();
 
-  logAdminAction(adminId, 'exam_center_removed', centerId);
+  logAdminAction(adminId, 'exam_center_removed', centerId, null, ipAddress);
   return { centerId, removed: true };
 };
 
@@ -921,7 +947,7 @@ const getAllExamCenters = async (city) => {
 
 // ─── Expansion Management ─────────────────────────────────────────────────────
 
-const addCity = async (cityName, state, adminId) => {
+const addCity = async (cityName, state, adminId, ipAddress = null) => {
   if (!cityName || !state) {
     const err = new Error('cityName and state are required'); err.status = 400; throw err;
   }
@@ -934,12 +960,12 @@ const addCity = async (cityName, state, adminId) => {
     existing.isActive = true;
     existing.state = state.trim();
     await existing.save();
-    logAdminAction(adminId, 'city_reactivated', existing.id);
+    logAdminAction(adminId, 'city_reactivated', existing.id, null, ipAddress);
     return { city: existing, reactivated: true };
   }
 
   const city = await ActiveCity.create({ cityName: cityName.trim(), state: state.trim() });
-  logAdminAction(adminId, 'city_added', city.id);
+  logAdminAction(adminId, 'city_added', city.id, null, ipAddress);
   return { city, reactivated: false };
 };
 

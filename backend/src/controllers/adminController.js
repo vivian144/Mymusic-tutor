@@ -47,13 +47,13 @@ const approveTeacher = handle(async (req) => {
   if (!status) {
     const err = new Error('status is required'); err.status = 400; throw err;
   }
-  return adminService.approveTeacher(id, status, note, req.user.id);
+  return adminService.approveTeacher(id, status, note, req.user.id, req.ip);
 });
 
 const flagTeacher = handle(async (req) => {
   const { id } = req.params;
   const { reason } = req.body;
-  return adminService.flagTeacher(id, reason, req.user.id);
+  return adminService.flagTeacher(id, reason, req.user.id, req.ip);
 });
 
 const removeTeacher = handle(async (req) => {
@@ -62,7 +62,7 @@ const removeTeacher = handle(async (req) => {
   if (id === req.user.id) {
     const err = new Error('Admin cannot remove their own account'); err.status = 403; throw err;
   }
-  return adminService.removeTeacher(id, reason, req.user.id);
+  return adminService.removeTeacher(id, reason, req.user.id, req.ip);
 });
 
 const getTeacherPayouts = handle(async (req) => {
@@ -70,7 +70,7 @@ const getTeacherPayouts = handle(async (req) => {
 });
 
 const processTeacherPayout = handle(async (req) => {
-  return adminService.processTeacherPayout(req.params.id, req.user.id);
+  return adminService.processTeacherPayout(req.params.id, req.user.id, req.ip);
 });
 
 // ─── Student Management ───────────────────────────────────────────────────────
@@ -82,11 +82,11 @@ const getAllStudents = handle(async (req) => {
 const suspendUser = handle(async (req) => {
   const { id } = req.params;
   const { reason } = req.body;
-  return adminService.suspendUser(id, reason, req.user.id);
+  return adminService.suspendUser(id, reason, req.user.id, req.ip);
 });
 
 const reactivateUser = handle(async (req) => {
-  return adminService.reactivateUser(req.params.id, req.user.id);
+  return adminService.reactivateUser(req.params.id, req.user.id, req.ip);
 });
 
 // ─── Booking & Session Management ─────────────────────────────────────────────
@@ -101,11 +101,11 @@ const overrideReschedule = handle(async (req) => {
   if (!newDate) {
     const err = new Error('newDate is required'); err.status = 400; throw err;
   }
-  return adminService.overrideReschedule(id, newDate, req.user.id);
+  return adminService.overrideReschedule(id, newDate, req.user.id, req.ip);
 });
 
 const forceCompleteSession = handle(async (req) => {
-  return adminService.forceCompleteSession(req.params.id, req.user.id);
+  return adminService.forceCompleteSession(req.params.id, req.user.id, req.ip);
 });
 
 const getAllDisputes = handle(async () => {
@@ -115,19 +115,19 @@ const getAllDisputes = handle(async () => {
 const resolveDispute = handle(async (req) => {
   const { id } = req.params;
   const { resolution } = req.body;
-  return adminService.resolveDispute(id, resolution, req.user.id);
+  return adminService.resolveDispute(id, resolution, req.user.id, req.ip);
 });
 
 // ─── WhatsApp Management ───────────────────────────────────────────────────────
 
 const sendPlatformNotification = handle(async (req) => {
   const { userIds, message } = req.body;
-  return adminService.sendPlatformNotification(userIds, message, req.user.id);
+  return adminService.sendPlatformNotification(userIds, message, req.user.id, req.ip);
 });
 
 const sendBulkNotification = handle(async (req) => {
   const { role, message } = req.body;
-  return adminService.sendBulkNotification(role, message, req.user.id);
+  return adminService.sendBulkNotification(role, message, req.user.id, req.ip);
 });
 
 // ─── First Class & Package Oversight ─────────────────────────────────────────
@@ -147,7 +147,7 @@ const viewPendingReminders = handle(async () => {
 });
 
 const triggerReminder = handle(async (req) => {
-  return adminService.triggerReminder(req.params.id, req.user.id);
+  return adminService.triggerReminder(req.params.id, req.user.id, req.ip);
 });
 
 // ─── Exam Center Management ────────────────────────────────────────────────────
@@ -157,15 +157,15 @@ const getAllExamCenters = handle(async (req) => {
 });
 
 const addExamCenter = handle(async (req) => {
-  return adminService.addExamCenter(req.body, req.user.id);
+  return adminService.addExamCenter(req.body, req.user.id, req.ip);
 });
 
 const updateExamCenter = handle(async (req) => {
-  return adminService.updateExamCenter(req.params.id, req.body, req.user.id);
+  return adminService.updateExamCenter(req.params.id, req.body, req.user.id, req.ip);
 });
 
 const removeExamCenter = handle(async (req) => {
-  return adminService.removeExamCenter(req.params.id, req.user.id);
+  return adminService.removeExamCenter(req.params.id, req.user.id, req.ip);
 });
 
 // ─── City / Expansion Management ──────────────────────────────────────────────
@@ -179,7 +179,7 @@ const addCity = handle(async (req) => {
   if (!cityName || !state) {
     const err = new Error('cityName and state are required'); err.status = 400; throw err;
   }
-  return adminService.addCity(cityName, state, req.user.id);
+  return adminService.addCity(cityName, state, req.user.id, req.ip);
 });
 
 const getCityReadiness = handle(async (req) => {

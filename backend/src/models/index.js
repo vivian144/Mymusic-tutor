@@ -5,6 +5,7 @@ const Package = require('./Package');
 const Session = require('./Session');
 const ExamCenter = require('./ExamCenter');
 const ActiveCity = require('./ActiveCity');
+const AdminLog = require('./AdminLog');
 
 // User → TeacherProfile
 User.hasOne(TeacherProfile, { foreignKey: 'userId', as: 'teacherProfile' });
@@ -35,5 +36,6 @@ module.exports = {
   Package,
   Session,
   ExamCenter,
-  ActiveCity
+  ActiveCity,
+  AdminLog
 };

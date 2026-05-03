@@ -1,5 +1,7 @@
 const Redis = require('ioredis');
 
+// FIX 8: REDIS_URL now includes the password (redis://:password@host:port)
+// ioredis parses the URL automatically, including auth credentials.
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,

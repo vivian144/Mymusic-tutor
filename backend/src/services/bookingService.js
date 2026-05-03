@@ -47,7 +47,8 @@ const RESCHEDULE_ALLOWANCES = {
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
 
 const validateTeacherForBooking = async (teacherId, instrument, grade) => {
-  const teacher = await User.findByPk(teacherId);
+  // FIX 5: exclude password from all User lookups
+  const teacher = await User.findByPk(teacherId, { attributes: { exclude: ['password'] } });
   if (!teacher || teacher.role !== 'teacher') {
     const err = new Error('Teacher not found'); err.status = 404; throw err;
   }
@@ -107,7 +108,8 @@ const createFirstClassBooking = async (studentId, teacherId, scheduledAt, instru
     scheduledAt: new Date(scheduledAt),
     isFirstClass: true,
     packageId: null,
-    status: 'scheduled'
+    status: 'scheduled',
+    amount: price
   });
 
   // Send booking confirmation WhatsApp (non-blocking)
@@ -199,6 +201,19 @@ const confirmBooking = async (bookingId, paymentId) => {
       const err = new Error('Package is not awaiting payment confirmation'); err.status = 400; throw err;
     }
 
+    // FIX 9: Recalculate amount server-side and verify against stored amount.
+    // Amount is NEVER trusted from frontend — only grade + packageType are used.
+    const gradeTier = getGradeTier(pkg.gradeTarget);
+    const expectedAmount = PACKAGE_PRICES[pkg.packageType]?.[gradeTier];
+    if (expectedAmount !== undefined && Math.abs(expectedAmount - pkg.totalAmount) > 0.01) {
+      console.error(
+        `[SECURITY] Amount mismatch for package ${bookingId}: ` +
+        `stored=${pkg.totalAmount}, server-calculated=${expectedAmount}. ` +
+        `Possible data tampering — blocking confirmation.`
+      );
+      const err = new Error('Booking amount verification failed. Please contact support.'); err.status = 422; throw err;
+    }
+
     const t = await sequelize.transaction();
     try {
       pkg.status = 'active';
@@ -252,6 +267,20 @@ const confirmBooking = async (bookingId, paymentId) => {
       const err = new Error('Student profile not found'); err.status = 404; throw err;
     }
 
+    // Verify stored amount matches server-calculated price for this student's grade
+    if (session.amount !== null && session.amount !== undefined) {
+      const gradeTier = getGradeTier(studentProfile.currentGrade);
+      const expectedAmount = FIRST_CLASS_PRICES[gradeTier];
+      if (Math.abs(expectedAmount - session.amount) > 0.01) {
+        console.error(
+          `[SECURITY] Amount mismatch for first-class session ${bookingId}: ` +
+          `stored=${session.amount}, server-calculated=${expectedAmount}. ` +
+          `Possible data tampering — blocking confirmation.`
+        );
+        const err = new Error('Booking amount verification failed. Please contact support.'); err.status = 422; throw err;
+      }
+    }
+
     studentProfile.hasUsedFirstClass = true;
     studentProfile.firstClassBookedAt = new Date();
     await studentProfile.save();
@@ -267,7 +296,7 @@ const confirmBooking = async (bookingId, paymentId) => {
 };
 
 const cancelBooking = async (bookingId, userId) => {
-  const user = await User.findByPk(userId);
+  const user = await User.findByPk(userId, { attributes: { exclude: ['password'] } });
   if (!user) {
     const err = new Error('User not found'); err.status = 404; throw err;
   }
@@ -342,7 +371,7 @@ const rescheduleSession = async (sessionId, userId, newScheduledAt) => {
     const err = new Error('Only scheduled or teacher-absent sessions can be rescheduled'); err.status = 400; throw err;
   }
 
-  const user = await User.findByPk(userId);
+  const user = await User.findByPk(userId, { attributes: { exclude: ['password'] } });
   const isStudent = user.role === 'student' && session.studentId === userId;
   const isTeacher = user.role === 'teacher' && session.teacherId === userId;
   const isAdmin = user.role === 'admin';
@@ -671,7 +700,7 @@ const generateSessionsForPackage = async (packageId, startDate, sessionsPerWeek,
 };
 
 const getBookingDetails = async (bookingId, userId) => {
-  const user = await User.findByPk(userId);
+  const user = await User.findByPk(userId, { attributes: { exclude: ['password'] } });
   if (!user) {
     const err = new Error('User not found'); err.status = 404; throw err;
   }

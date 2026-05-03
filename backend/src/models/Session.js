@@ -83,6 +83,11 @@ const Session = sequelize.define('Session', {
   completedAt: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  amount: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+    comment: 'Price paid for this session (for first class)'
   }
 }, {
   timestamps: true
