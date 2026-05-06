@@ -27,9 +27,33 @@ const registerValidation = (req, res, next) => {
   else if (!['student', 'teacher'].includes(role)) errors.push('Role must be student or teacher');
 
   if (role === 'teacher') {
-    const { instruments, hourlyRate } = req.body;
+    const { instruments, hourlyRate, certificateType, highestGrade, certificateUrl,
+            experienceProofUrl, experience, teachingMode } = req.body;
+
     if (!instruments?.length) errors.push('At least one instrument is required for teachers');
     if (!hourlyRate || isNaN(hourlyRate) || Number(hourlyRate) <= 0) errors.push('Valid hourly rate is required for teachers');
+
+    if (!certificateType) {
+      errors.push('Certificate type is required for teachers');
+    } else if (!['trinity', 'rockschool', 'experience_based'].includes(certificateType)) {
+      errors.push("Certificate type must be 'trinity', 'rockschool', or 'experience_based'");
+    } else if (certificateType === 'experience_based') {
+      if (!experienceProofUrl?.trim()) errors.push('Experience proof document URL is required for experience-based teachers');
+      if (!experience || isNaN(experience) || Number(experience) < 2) errors.push('Minimum 2 years of experience is required for experience-based teachers');
+    } else {
+      if (!highestGrade || isNaN(highestGrade)) errors.push('Highest grade is required for Trinity/Rockschool certified teachers');
+      if (!certificateUrl?.trim()) errors.push('Certificate URL is required for Trinity/Rockschool certified teachers');
+    }
+
+    if (teachingMode && !['offline', 'online', 'both'].includes(teachingMode)) {
+      errors.push("Teaching mode must be 'offline', 'online', or 'both'");
+    }
+  }
+
+  if (role === 'student') {
+    const { learningGoal } = req.body;
+    if (!learningGoal) errors.push('Learning goal is required for students');
+    else if (!['grades', 'hobby'].includes(learningGoal)) errors.push("Learning goal must be 'grades' or 'hobby'");
   }
 
   if (errors.length > 0) {

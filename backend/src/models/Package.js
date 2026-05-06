@@ -85,6 +85,10 @@ const Package = sequelize.define('Package', {
     type: DataTypes.STRING,
     allowNull: true,
     comment: 'Razorpay payment ID'
+  },
+  learningGoal: {
+    type: DataTypes.ENUM('grades', 'hobby'),
+    defaultValue: 'grades'
   }
 }, {
   timestamps: true

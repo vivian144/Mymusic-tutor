@@ -59,6 +59,14 @@ const StudentProfile = sequelize.define('StudentProfile', {
   firstClassBookedAt: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  learningGoal: {
+    type: DataTypes.ENUM('grades', 'hobby'),
+    defaultValue: 'grades'
+  },
+  songsLearned: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: []
   }
 }, {
   timestamps: true

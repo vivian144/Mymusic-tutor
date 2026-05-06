@@ -88,6 +88,26 @@ const Session = sequelize.define('Session', {
     type: DataTypes.FLOAT,
     allowNull: true,
     comment: 'Price paid for this session (for first class)'
+  },
+  isOnline: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  onlineRoomUrl: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  onlineRoomId: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  sessionRecordingUrl: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  chatLog: {
+    type: DataTypes.JSONB,
+    defaultValue: []
   }
 }, {
   timestamps: true

@@ -15,7 +15,8 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-const calculateBadgeLevel = (highestGrade, experience) => {
+const calculateBadgeLevel = (highestGrade, experience, isPractitioner = false) => {
+  if (isPractitioner) return 'practitioner';
   if (!highestGrade) {
     return experience >= 3 ? 'experience_verified' : 'emerging';
   }
@@ -45,7 +46,8 @@ const updateTeacherProfile = async (userId, data) => {
 
   const allowedFields = [
     'bio', 'experience', 'instruments', 'highestGrade', 'hourlyRate',
-    'serviceRadiusKm', 'syllabus', 'certificateUrl', 'aadhaarUrl', 'introVideoUrl'
+    'serviceRadiusKm', 'syllabus', 'certificateUrl', 'aadhaarUrl', 'introVideoUrl',
+    'teachingMode', 'certificateType', 'experienceProofUrl', 'experienceProofType', 'isPractitioner'
   ];
 
   const updates = {};
@@ -69,12 +71,17 @@ const updateTeacherProfile = async (userId, data) => {
       updates.highestGrade = maxGrade;
       updates.canTeachUpToGrade = Math.max(0, maxGrade - 2);
       const experience = updates.experience ?? profile.experience;
-      updates.badgeLevel = calculateBadgeLevel(maxGrade, experience);
+      const isPractitioner = updates.isPractitioner ?? profile.isPractitioner;
+      updates.badgeLevel = calculateBadgeLevel(maxGrade, experience, isPractitioner);
     }
-  } else if (updates.highestGrade !== undefined) {
-    updates.canTeachUpToGrade = Math.max(0, updates.highestGrade - 2);
+  } else if (updates.highestGrade !== undefined || updates.isPractitioner !== undefined) {
+    const highestGrade = updates.highestGrade ?? profile.highestGrade;
     const experience = updates.experience ?? profile.experience;
-    updates.badgeLevel = calculateBadgeLevel(updates.highestGrade, experience);
+    const isPractitioner = updates.isPractitioner ?? profile.isPractitioner;
+    if (updates.highestGrade !== undefined) {
+      updates.canTeachUpToGrade = Math.max(0, updates.highestGrade - 2);
+    }
+    updates.badgeLevel = calculateBadgeLevel(highestGrade, experience, isPractitioner);
   }
 
   await profile.update(updates);
@@ -90,20 +97,66 @@ const setAvailability = async (userId, availability) => {
   return profile;
 };
 
-const getAvailableTeachers = async (instrument, grade, latitude, longitude) => {
+const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+const WEEKENDS = ['saturday', 'sunday'];
+
+const matchesAvailability = (availability, dayType, timeOfDay) => {
+  if (!availability || typeof availability !== 'object') return false;
+  const days = dayType === 'weekdays' ? WEEKDAYS
+             : dayType === 'weekends' ? WEEKENDS
+             : [...WEEKDAYS, ...WEEKENDS];
+  return days.some(day => {
+    const slot = availability[day];
+    if (!slot) return false;
+    return timeOfDay ? slot[timeOfDay] === true : Object.values(slot).some(Boolean);
+  });
+};
+
+const getAvailableTeachers = async (instrument, grade, latitude, longitude, filters = {}) => {
   if (!instrument) {
     const err = new Error('Instrument is required for search'); err.status = 400; throw err;
   }
+
+  const {
+    teachingMode, learningGoal, dayType, timeOfDay,
+    badgeLevels, minRating, priceMin, priceMax, sort
+  } = filters;
 
   const profileWhere = {
     approvalStatus: 'approved',
     instruments: { [Op.contains]: [instrument] }
   };
 
-  if (grade !== undefined && grade !== null) {
+  // Grade filter: skip for hobby learners
+  if (grade !== undefined && grade !== null && learningGoal !== 'hobby') {
     const studentGrade = parseInt(grade, 10);
-    // canTeachUpToGrade = highestGrade - 2; teacher must be able to teach student's grade
     profileWhere.canTeachUpToGrade = { [Op.gte]: studentGrade };
+  }
+
+  // Teaching mode filter
+  if (teachingMode === 'online') {
+    profileWhere.teachingMode = { [Op.in]: ['online', 'both'] };
+  } else if (teachingMode === 'offline') {
+    profileWhere.teachingMode = { [Op.in]: ['offline', 'both'] };
+  } else if (teachingMode === 'both') {
+    profileWhere.teachingMode = 'both';
+  }
+
+  // Badge level filter
+  if (badgeLevels && badgeLevels.length > 0) {
+    profileWhere.badgeLevel = { [Op.in]: badgeLevels };
+  }
+
+  // Rating filter
+  if (minRating !== undefined && minRating !== null) {
+    profileWhere.rating = { [Op.gte]: parseFloat(minRating) };
+  }
+
+  // Price range filter
+  if (priceMin !== undefined || priceMax !== undefined) {
+    profileWhere.hourlyRate = {};
+    if (priceMin !== undefined) profileWhere.hourlyRate[Op.gte] = parseFloat(priceMin);
+    if (priceMax !== undefined) profileWhere.hourlyRate[Op.lte] = parseFloat(priceMax);
   }
 
   const profiles = await TeacherProfile.findAll({
@@ -118,16 +171,22 @@ const getAvailableTeachers = async (instrument, grade, latitude, longitude) => {
 
   let teachers = profiles;
 
-  // Distance filter: only if caller provided location
-  if (latitude !== undefined && longitude !== undefined) {
+  // Availability filter (post-query, operates on JSONB)
+  if (dayType || timeOfDay) {
+    teachers = teachers.filter(p => matchesAvailability(p.availability, dayType, timeOfDay));
+  }
+
+  const hasLocation = latitude !== undefined && longitude !== undefined;
+
+  // Distance filter and annotation
+  if (hasLocation) {
     const callerLat = parseFloat(latitude);
     const callerLon = parseFloat(longitude);
 
     teachers = teachers.filter(profile => {
       const { latitude: tLat, longitude: tLon } = profile.user;
       if (tLat == null || tLon == null) return false;
-      const dist = calculateDistance(callerLat, callerLon, tLat, tLon);
-      return dist <= profile.serviceRadiusKm;
+      return calculateDistance(callerLat, callerLon, tLat, tLon) <= profile.serviceRadiusKm;
     });
 
     teachers = teachers.map(profile => {
@@ -141,9 +200,17 @@ const getAvailableTeachers = async (instrument, grade, latitude, longitude) => {
     teachers = teachers.map(p => p.toJSON());
   }
 
+  // Sort
   teachers.sort((a, b) => {
-    if (b.rating !== a.rating) return b.rating - a.rating;
-    return a.hourlyRate - b.hourlyRate;
+    switch (sort) {
+      case 'price':    return a.hourlyRate - b.hourlyRate;
+      case 'distance': return hasLocation ? (a.distanceKm || 0) - (b.distanceKm || 0) : 0;
+      case 'sessions': return b.totalSessions - a.totalSessions;
+      case 'rating':
+      default:
+        if (b.rating !== a.rating) return b.rating - a.rating;
+        return a.hourlyRate - b.hourlyRate;
+    }
   });
 
   return teachers;

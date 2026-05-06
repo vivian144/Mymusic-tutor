@@ -40,8 +40,27 @@ const setAvailability = async (req, res, next) => {
 
 const searchTeachers = async (req, res, next) => {
   try {
-    const { instrument, grade, latitude, longitude } = req.query;
-    const teachers = await teacherService.getAvailableTeachers(instrument, grade, latitude, longitude);
+    const {
+      instrument, grade, latitude, longitude,
+      teachingMode, learningGoal, dayType, timeOfDay,
+      badgeLevels, minRating, priceMin, priceMax, sort
+    } = req.query;
+
+    const filters = {
+      teachingMode,
+      learningGoal,
+      dayType,
+      timeOfDay,
+      badgeLevels: badgeLevels
+        ? (Array.isArray(badgeLevels) ? badgeLevels : [badgeLevels])
+        : undefined,
+      minRating,
+      priceMin,
+      priceMax,
+      sort
+    };
+
+    const teachers = await teacherService.getAvailableTeachers(instrument, grade, latitude, longitude, filters);
     res.json({
       success: true,
       message: 'Teachers retrieved successfully',

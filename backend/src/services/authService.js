@@ -40,8 +40,9 @@ const register = async (userData) => {
   const {
     fullName, email, password, phone, role, city, state, address,
     bio, experience, instruments, highestGrade, hourlyRate, serviceRadiusKm,
+    certificateType, experienceProofUrl, experienceProofType, teachingMode,
     age, parentName, parentPhone, instrument, currentGrade, targetGrade,
-    hasInstrumentAtHome, notes
+    hasInstrumentAtHome, notes, learningGoal, songsLearned
   } = userData;
 
   const existing = await User.findOne({
@@ -72,15 +73,21 @@ const register = async (userData) => {
   });
 
   if (role === 'teacher') {
+    const isExperienceBased = certificateType === 'experience_based';
     await TeacherProfile.create({
       userId: user.id,
       bio: bio || null,
       experience: experience || 0,
       instruments: Array.isArray(instruments) ? instruments : [instruments],
-      highestGrade: highestGrade || null,
-      canTeachUpToGrade: highestGrade ? Math.max(0, highestGrade - 2) : null,
+      highestGrade: isExperienceBased ? null : (highestGrade || null),
+      canTeachUpToGrade: (!isExperienceBased && highestGrade) ? Math.max(0, highestGrade - 2) : null,
       hourlyRate: Number(hourlyRate),
-      serviceRadiusKm: serviceRadiusKm || 15
+      serviceRadiusKm: serviceRadiusKm || 15,
+      teachingMode: teachingMode || 'offline',
+      certificateType: certificateType || null,
+      experienceProofUrl: isExperienceBased ? (experienceProofUrl || null) : null,
+      experienceProofType: isExperienceBased ? (experienceProofType || null) : null,
+      isPractitioner: false
     });
   } else {
     await StudentProfile.create({
@@ -90,9 +97,11 @@ const register = async (userData) => {
       parentPhone: parentPhone || null,
       instrument: instrument || null,
       currentGrade: currentGrade || 0,
-      targetGrade: targetGrade || null,
+      targetGrade: learningGoal === 'hobby' ? null : (targetGrade || null),
       hasInstrumentAtHome: hasInstrumentAtHome !== undefined ? hasInstrumentAtHome : true,
-      notes: notes || null
+      notes: notes || null,
+      learningGoal: learningGoal || 'grades',
+      songsLearned: Array.isArray(songsLearned) ? songsLearned : []
     });
   }
 

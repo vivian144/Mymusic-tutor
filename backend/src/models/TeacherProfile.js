@@ -36,15 +36,38 @@ const TeacherProfile = sequelize.define('TeacherProfile', {
     allowNull: true,
     comment: 'Automatically set to highestGrade - 2'
   },
+  teachingMode: {
+    type: DataTypes.ENUM('offline', 'online', 'both'),
+    defaultValue: 'offline'
+  },
   badgeLevel: {
     type: DataTypes.ENUM(
       'emerging',
       'verified',
       'senior',
       'elite',
-      'experience_verified'
+      'experience_verified',
+      'practitioner'
     ),
     defaultValue: 'emerging'
+  },
+  certificateType: {
+    type: DataTypes.ENUM('trinity', 'rockschool', 'experience_based'),
+    allowNull: true
+  },
+  experienceProofUrl: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  experienceProofType: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'institute_letter, performance_video, reference_letter, other'
+  },
+  isPractitioner: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'True when no grade certificate but experience verified by admin'
   },
   syllabus: {
     type: DataTypes.ARRAY(DataTypes.STRING),
