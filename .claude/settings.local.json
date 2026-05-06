@@ -12,7 +12,13 @@
       "Bash(node --check src/services/bookingService.js)",
       "Bash(node --check src/services/adminService.js)",
       "Bash(node --check src/server.js)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(node --check src/models/User.js)",
+      "Bash(node --check src/middleware/auth.js)",
+      "Bash(node --check src/services/emailService.js)",
+      "Bash(node --check src/services/passwordResetService.js)",
+      "Bash(node --check src/config/passport.js)",
+      "Bash(node --check src/services/smsService.js)"
     ]
   }
 }

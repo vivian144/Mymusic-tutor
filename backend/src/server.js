@@ -6,6 +6,8 @@ require('dotenv').config();
 const { connectDB } = require('./config/database');
 // Load all models (including AdminLog)
 require('./models');
+// Initialize passport strategies
+require('./config/passport');
 
 const authRoutes         = require('./routes/auth');
 const teacherRoutes      = require('./routes/teachers');
@@ -93,6 +95,12 @@ app.use(mongoSanitize);
 // Auth routes — tighter limits with progressive delay
 app.post('/api/auth/login',    progressiveDelay, authLimiter);
 app.post('/api/auth/register', strictAuthLimiter);
+
+// OTP routes — IP-level limiter as second layer (phone-based limits are in service layer)
+app.post('/api/auth/forgot-password',         authLimiter);
+app.post('/api/auth/reset-password',          authLimiter);
+app.post('/api/auth/send-otp',                authLimiter);
+app.post('/api/auth/send-phone-verification', authLimiter);
 
 // Teacher search
 app.get('/api/teachers/search', searchLimiter);

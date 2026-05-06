@@ -18,6 +18,13 @@ const protect = async (req, res, next) => {
     if (!user) return res.status(401).json({ success: false, message: 'User not found' });
     if (!user.isActive) return res.status(403).json({ success: false, message: 'Account is deactivated' });
 
+    // Invalidate tokens issued before a password reset (tokenVersion bump)
+    const decodedVersion = decoded.tokenVersion ?? 0;
+    const userVersion = user.tokenVersion ?? 0;
+    if (decodedVersion !== userVersion) {
+      return res.status(401).json({ success: false, message: 'Session expired. Please login again.' });
+    }
+
     req.user = user;
     next();
   } catch (err) {

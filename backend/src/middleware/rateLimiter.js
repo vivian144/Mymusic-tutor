@@ -182,6 +182,27 @@ const resetFailedLogins = async (email) => {
   }
 };
 
+// ─── OTP Phone-Based Rate Limiting ────────────────────────────────────────────
+// Used directly in service functions (not as Express middleware) because the
+// key is derived from the phone number in the request body, not the IP.
+
+const checkOtpRateLimit = async (phone, type, max, windowSec) => {
+  try {
+    const key = `otp_rate:${type}:${phone}`;
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, windowSec);
+    if (count > max) {
+      const minutesLeft = Math.ceil(windowSec / 60);
+      const err = new Error(`Too many OTP requests. Try again in ${minutesLeft} minute(s).`);
+      err.status = 429;
+      throw err;
+    }
+  } catch (err) {
+    if (err.status === 429) throw err;
+    console.error('[RateLimit] checkOtpRateLimit Redis error:', err.message);
+  }
+};
+
 module.exports = {
   authLimiter,
   strictAuthLimiter,
@@ -194,5 +215,6 @@ module.exports = {
   progressiveDelay,
   checkAccountLockout,
   recordFailedLogin,
-  resetFailedLogins
+  resetFailedLogins,
+  checkOtpRateLimit
 };

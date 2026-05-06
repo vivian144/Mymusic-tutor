@@ -20,11 +20,11 @@ const User = sequelize.define('User', {
   },
   password: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true  // nullable for Google OAuth users
   },
   phone: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,  // nullable for Google OAuth users
     unique: true
   },
   role: {
@@ -70,15 +70,38 @@ const User = sequelize.define('User', {
   lastLogin: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  tokenVersion: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  },
+  googleId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true
+  },
+  emailVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  emailVerificationToken: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  phoneVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 }, {
   timestamps: true,
   hooks: {
     beforeCreate: async (user) => {
-      user.password = await bcrypt.hash(user.password, 12);
+      if (user.password) {
+        user.password = await bcrypt.hash(user.password, 12);
+      }
     },
     beforeUpdate: async (user) => {
-      if (user.changed('password')) {
+      if (user.changed('password') && user.password) {
         user.password = await bcrypt.hash(user.password, 12);
       }
     }
@@ -86,6 +109,7 @@ const User = sequelize.define('User', {
 });
 
 User.prototype.comparePassword = async function(password) {
+  if (!this.password) return false; // Google OAuth users have no password
   return await bcrypt.compare(password, this.password);
 };
 

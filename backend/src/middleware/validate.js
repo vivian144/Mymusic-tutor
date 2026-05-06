@@ -77,4 +77,37 @@ const loginValidation = (req, res, next) => {
   next();
 };
 
-module.exports = { registerValidation, loginValidation };
+const phoneValidation = (req, res, next) => {
+  const { phone } = req.body;
+  if (!phone?.trim()) {
+    return res.status(400).json({ success: false, message: 'Phone number is required' });
+  }
+  if (!/^[6-9]\d{9}$/.test(phone.replace(/[\s\-]/g, ''))) {
+    return res.status(400).json({ success: false, message: 'Invalid Indian phone number (10 digits starting with 6-9)' });
+  }
+  next();
+};
+
+const newPasswordValidation = (req, res, next) => {
+  const { newPassword } = req.body;
+  const errors = [];
+
+  if (!newPassword) {
+    errors.push('New password is required');
+  } else {
+    if (newPassword.length < 8)    errors.push('Password must be at least 8 characters');
+    if (newPassword.length > 128)  errors.push('Password must not exceed 128 characters');
+    if (/\s/.test(newPassword))    errors.push('Password must not contain spaces');
+    if (!/[A-Z]/.test(newPassword)) errors.push('Password must contain at least one uppercase letter');
+    if (!/[a-z]/.test(newPassword)) errors.push('Password must contain at least one lowercase letter');
+    if (!/\d/.test(newPassword))    errors.push('Password must contain at least one number');
+    if (!/[!@#$%^&*]/.test(newPassword)) errors.push('Password must contain at least one special character (!@#$%^&*)');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({ success: false, message: 'Validation failed', errors });
+  }
+  next();
+};
+
+module.exports = { registerValidation, loginValidation, phoneValidation, newPasswordValidation };
